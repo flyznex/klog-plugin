@@ -42,10 +42,10 @@
         }
     ],
     "extra_config": {
-         "telemetry/krakend-gologging": {
+         "telemetry/logging": {
             "level": "DEBUG",
             "prefix": "[KRAKEND]",
-            "syslog": true,
+            "syslog": false,
             "stdout": true,
             "format": "default"
         },

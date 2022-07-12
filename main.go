@@ -59,6 +59,7 @@ func (r registerer) registerHandlers(ctx context.Context, extra map[string]inter
 			"path":       rpath,
 			"user_agent": req.UserAgent(),
 			"header":     req.Header,
+			"query":      req.URL.RawQuery,
 		}
 		for _, p := range skipPaths {
 			if v, ok := p.(string); ok {
