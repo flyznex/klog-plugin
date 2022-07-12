@@ -1,0 +1,63 @@
+{
+    "version": 3,
+    "plugin": {
+        "pattern": ".so",
+        "folder": "/app/plugin/"
+    },
+    "endpoints": [
+        {
+            "endpoint": "/test/{id}",
+            "backend": [
+                {
+                    "host": [
+                        "http://localhost:8080"
+                    ],
+                    "url_pattern": "/__health"
+                }
+            ]
+        },
+        {
+            "endpoint": "/create-post",
+            "method": "POST",
+            "backend": [
+                {
+                    "host": [
+                        "https://jsonplaceholder.typicode.com"
+                    ],
+                    "url_pattern": "/posts"
+                }
+            ]
+        },
+         {
+            "endpoint": "/create-post-logging",
+            "method": "POST",
+            "backend": [
+                {
+                    "host": [
+                        "https://jsonplaceholder.typicode.com"
+                    ],
+                    "url_pattern": "/posts"
+                }
+            ]
+        }
+    ],
+    "extra_config": {
+         "telemetry/krakend-gologging": {
+            "level": "DEBUG",
+            "prefix": "[KRAKEND]",
+            "syslog": true,
+            "stdout": true,
+            "format": "default"
+        },
+        "plugin/http-server": {
+            "name": [
+                "klog-plugin"
+            ],
+            "klog-plugin": {
+                "skip_paths": ["/create-post","/__health"],
+                "enabled": true
+            }
+        }
+       
+    }
+}

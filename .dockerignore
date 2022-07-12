@@ -1,0 +1,5 @@
+out/
+build.sh
+run.sh
+krakend.json
+check-config.sh
