@@ -29,7 +29,7 @@
                 }
             ]
         },
-         {
+        {
             "endpoint": "/create-post-logging",
             "method": "POST",
             "backend": [
@@ -43,22 +43,44 @@
         }
     ],
     "extra_config": {
-         "telemetry/logging": {
+        "telemetry/logging": {
             "level": "DEBUG",
             "prefix": "[KRAKEND]",
             "syslog": false,
             "stdout": true,
             "format": "default"
         },
+        "telemetry/opencensus": {
+            "exporters": {
+                "logger": {
+                    "stats": true,
+                    "spans": true
+                }
+            }
+        },
         "plugin/http-server": {
             "name": [
                 "klog-plugin"
             ],
             "klog-plugin": {
-                "skip_paths": ["/create-post","/__health"],
-                "enabled": true
+                "skip_paths": [
+                    "/create-post",
+                    "/__health"
+                ],
+                "enabled": true,
+                "log_header_keys": [
+                    "RefNo",
+                    "DeviceId"
+                ],
+                "kafka": {
+                    "enabled": false,
+                    "broker_urls": [
+                        "kafka-server:9092"
+                    ],
+                    "topic": "kq",
+                    "partition": 1
+                }
             }
         }
-       
     }
 }
