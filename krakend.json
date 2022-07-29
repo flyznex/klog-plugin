@@ -72,13 +72,14 @@
                     "RefNo",
                     "DeviceId"
                 ],
+                "stdout": true,
                 "kafka": {
-                    "enabled": false,
+                    "enabled": true,
                     "broker_urls": [
                         "kafka-server:9092"
                     ],
-                    "topic": "kq",
-                    "partition": 1
+                    "topic": "test-topic",
+                    "partition": 0
                 }
             }
         }

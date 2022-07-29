@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -18,6 +21,8 @@ import (
 // HandlerRegisterer is the symbol the plugin loader will try to load. It must implement the Registerer interface
 var HandlerRegisterer = registerer("klog-plugin")
 var tp *sdktrace.TracerProvider
+
+var kfPusher *Pusher
 
 type registerer string
 
@@ -42,16 +47,22 @@ func (r registerer) RegisterHandlers(f func(
 func (r registerer) registerHandlers(ctx context.Context, extra map[string]interface{}, h http.Handler) (http.Handler, error) {
 	cfg := configGetter(extra)
 	logger.Info(fmt.Sprintf("[PLUGIN: %s] config for [skip_paths]: [%s]", HandlerRegisterer, cfg.listSkipPath()))
-	var kfPusher *Pusher
-	if cfg.KafkaConfig.Enabled {
-		kfPusher = newPusher(cfg.KafkaConfig)
-	}
-	defer func() {
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigs
 		if kfPusher != nil && cfg.KafkaConfig.Enabled {
-			logger.Info("Close kafka connection")
-			kfPusher.Close()
+			if err := kfPusher.Close(); err != nil {
+				logger.Error(err)
+				return
+			}
+			logger.Info(fmt.Sprintf("[PLUGIN: %s] Closed kafka connection", HandlerRegisterer))
 		}
 	}()
+
+	// opentelemetry
 	tp = sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
@@ -63,11 +74,13 @@ func (r registerer) registerHandlers(ctx context.Context, extra map[string]inter
 			h.ServeHTTP(w, req)
 			return
 		}
-
 		rpath := req.URL.Path
 		if skip := cfg.isSkipped(rpath); skip {
 			h.ServeHTTP(w, req)
 			return
+		}
+		if kfPusher == nil && cfg.KafkaConfig.Enabled {
+			kfPusher = newPusher(ctx, cfg.KafkaConfig)
 		}
 		newCtx, span := tracer.Start(req.Context(), "Logging")
 		span.SetAttributes(attribute.String("req.path", rpath))
@@ -83,6 +96,7 @@ func (r registerer) registerHandlers(ctx context.Context, extra map[string]inter
 		logResponse(cfg, newCtx, loggingRW, kfPusher)
 	}), nil
 }
+
 func logRequest(cfg Config, ctx context.Context, req *http.Request, kfPusher ...*Pusher) {
 	span := trace.SpanFromContext(ctx)
 	record := map[string]interface{}{
@@ -106,7 +120,7 @@ func logRequest(cfg Config, ctx context.Context, req *http.Request, kfPusher ...
 		logger.Error(fmt.Sprintf("[PLUGIN: %s] read request body error: %s", HandlerRegisterer, err.Error()))
 	}
 	record["request_body"] = string(b)
-	WriteLog("REQUEST", record, kfPusher...)
+	WriteLog("REQUEST", record, cfg.Stdout, kfPusher...)
 	req.Body = ioutil.NopCloser(bytes.NewBuffer(b))
 }
 
@@ -120,13 +134,15 @@ func logResponse(cfg Config, ctx context.Context, w *loggingResponseWriter, kfPu
 		"response_headers":     w.Header().Clone(),
 	}
 
-	WriteLog("RESPONSE", rsprcd, kfPusher...)
+	WriteLog("RESPONSE", rsprcd, cfg.Stdout, kfPusher...)
 }
 
-func WriteLog(prefix string, record map[string]interface{}, kfPusher ...*Pusher) {
+func WriteLog(prefix string, record map[string]interface{}, stdout bool, kfPusher ...*Pusher) {
 	p, _ := json.Marshal(record)
 	logEntry := string(p)
-	logger.Info(fmt.Sprintf("[PLUGIN: %s] %s: %s", HandlerRegisterer, prefix, logEntry))
+	if stdout {
+		logger.Info(fmt.Sprintf("[PLUGIN: %s] %s: %s", HandlerRegisterer, prefix, logEntry))
+	}
 	for _, pusher := range kfPusher {
 		if pusher != nil {
 			logger.Info("push log to kafka")
@@ -141,12 +157,14 @@ type Config struct {
 	SkipPaths     []string
 	Enabled       bool
 	LogHeaderKeys []string
+	Stdout        bool //enable print to stdout
 	KafkaConfig   KafkaConfig
 }
 type KafkaConfig struct {
-	Enabled bool
-	Brokers []string
-	Topic   string
+	Enabled   bool
+	Brokers   []string
+	Topic     string
+	Partition int
 }
 
 func configGetter(extra map[string]interface{}) Config {
@@ -200,6 +218,11 @@ func configGetter(extra map[string]interface{}) Config {
 		kconfig.Topic = tp
 	}
 	cfg.KafkaConfig = kconfig
+
+	if tp, ok := kcfgRaw["partition"].(int); ok {
+		kconfig.Partition = tp
+	}
+	cfg.KafkaConfig = kconfig
 	return cfg
 }
 func (c Config) isSkipped(path string) bool {
@@ -218,6 +241,7 @@ func defaultConfigGetter() Config {
 		SkipPaths:     []string{},
 		Enabled:       true,
 		LogHeaderKeys: []string{},
+		Stdout:        true,
 		KafkaConfig:   KafkaConfig{Enabled: false},
 	}
 }

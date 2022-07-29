@@ -13,8 +13,8 @@ type (
 	}
 )
 
-func newPusher(cfg KafkaConfig) *Pusher {
-	conn, err := kafka.DialLeader(context.Background(), "tcp", cfg.Brokers[0], cfg.Topic, 1)
+func newPusher(ctx context.Context, cfg KafkaConfig) *Pusher {
+	conn, err := kafka.DialLeader(ctx, "tcp", cfg.Brokers[0], cfg.Topic, cfg.Partition)
 	if err != nil {
 		logger.Error(err)
 		return nil
