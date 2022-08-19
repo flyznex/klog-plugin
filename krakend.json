@@ -64,15 +64,13 @@
             ],
             "klog-plugin": {
                 "skip_paths": [
-                    "/create-post",
-                    "/__health"
+                    "/create-post"
                 ],
                 "enabled": true,
                 "log_header_keys": [
                     "RefNo",
                     "DeviceId"
                 ],
-                "stdout": true,
                 "kafka": {
                     "enabled": true,
                     "broker_urls": [
